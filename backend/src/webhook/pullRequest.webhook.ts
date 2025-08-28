@@ -4,6 +4,21 @@ import axios, { get } from "axios";
 import { getGithubToken } from "../utils/getGithubToken.ts";
 
 
+function extractJsonFromCodeBlock(input: string): any {
+  // Remove ```json ... ``` wrappers
+  const cleaned = input
+    .replace(/^```json\s*/, "") // remove starting ```json
+    .replace(/\s*```$/, "");    // remove ending ```
+
+  try {
+    console.log(cleaned);
+
+    return JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error("Invalid JSON inside code block: " + err);
+  }
+}
+
 export const pullRequestWebhook = async (req: Request, res: Response , action: string  , payload: any) => {
 
 
@@ -18,6 +33,22 @@ export const pullRequestWebhook = async (req: Request, res: Response , action: s
           Accept: "application/vnd.github.v3.diff",
         },
       });
+        await axios.post(
+          `${URL}`,
+          {
+            body: `We are reviewing your pull request.\n\n
+
+            `,
+            commit_id: payload.pull_request.head.sha,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json",
+            },
+          }
+        );
+      
       const diffText = diffRes.data;
       const prFilesUrl = `${payload.pull_request.url}/files`;
       const prFilesRes = await axios.get(prFilesUrl, {
@@ -58,10 +89,12 @@ export const pullRequestWebhook = async (req: Request, res: Response , action: s
         const full_file = ContentRes.data;
         const response = await chain.invoke({ diff: diffText , full_file });
         console.log(response);
+        const rawContent = response.content; 
+        const extracted = extractJsonFromCodeBlock(rawContent as string);
         await axios.post(
           `${URL}`,
           {
-            body: `AI Review: ${response.content}`,
+            body: `${extracted.comment}`,
             commit_id: payload.pull_request.head.sha,
           },
           {
